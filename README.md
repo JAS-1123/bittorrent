@@ -10,33 +10,18 @@ Designed with core systems programming principles in mind, this project demonstr
 
 The client utilizes a hybrid **Proactor Asynchronous I/O pattern** combined with dedicated component isolation to achieve high throughput without risking lock contention or CPU thread thrashing.
 
-+-------------------------------------------------------+
-|                     .torrent File                     |
-+-------------------------------------------------------+
-|
-v [Parsed via Bencode]
-+-------------------------------------------------------+
-|                  Core Engine State                    |
-|  - Global Pieces Scoreboard (Protected by std::mutex)  |
-+-------------------------------------------------------+
-|                                         |
-v [Discovers Peer IPs]                    v [Pushes Blocks]
-+-----------------------+              +-----------------------+
-|    Tracker Client     |              |   DiskWriter Thread   |
-|   (HTTP/UDP Sockets)  |              |  (Sequential pwrite)  |
-+-----------------------+              +-----------------------+
-^
-| [Task Queue]
-+-------------------------------------------------------+
-|          Asynchronous Network Thread Pool             |
-|     (Hardware Concurrency - io_context.run())         |
-+-------------------------------------------------------+
-|                        |                        |
-v [Strand Isolated]      v [Strand Isolated]      v [Strand Isolated]
-+--------------+         +--------------+         +--------------+
-| Peer Socket  |         | Peer Socket  |         | Peer Socket  |
-|  (Connection)|         |  (Connection)|         |  (Connection)|
-+--------------+         +--------------+         +--------------+
+cliTorrent/
+├── core/
+│   ├── bencode.py          # Custom Bencode parser (decodes raw torrent files)
+│   ├── torrent.py          # Metadata extractor (calculates info-hashes, parses file layouts)
+│   └── tracker.py          # Tracker client (manages HTTP, HTTPS, and UDP protocol announcements)
+├── network/
+│   ├── connection.py       # Low-level TCP socket manager & handshake handler
+│   ├── protocol.py         # BitTorrent wire protocol implementation (Choke, Unchoke, Interested, Piece)
+│   └── peer_worker.py      # Asyncio worker pool managing concurrent peer download loops
+└── storage/
+    ├── manager.py          # Block assembler & multi-file/single-file disk writer
+    └── verifier.py         # SHA-1 piece validator against torrent file metadata
 
 
 
@@ -55,29 +40,35 @@ v [Strand Isolated]      v [Strand Isolated]      v [Strand Isolated]
 
 ## 🔄 Core Application Flow
 
-[ 1. Initialization ] ────► Parse .torrent metadata & calculate 20-byte InfoHash
-|
-v
-[ 2. Discovery ]      ────► Announce to Tracker ──► Fetch packed Peer IP:Port list
-|
-v
-[ 3. Concurrency ]    ────► Boot Thread Pool (io_context) & spawn DiskWriter loop
-|
-v
-[ 4. Wire Protocol ]  ────► Connect to Peers ──► Async Handshake ──► Share Bitfield
-|
-v
-[ 5. Pipelining ]     ────► Loop: Request 16KB Blocks ──► Receive raw TCP streams
-|
-v
-[ 6. Verification ]   ────► Run SHA-1 cryptographic integrity checks on pieces
-|
-┌────────────────┴────────────────┐
-▼ [Hash Valid]                    ▼ [Hash Invalid]
-Queue task for DiskWriter              Discard corrupted buffer
-│                                 │
-▼                                 ▼
-Execute pwrite() to disk            Re-queue block requests
+[Start Execution]
+└── 1. Metadata Parsing Phase
+    └── Read local .torrent binary file
+        └── Parse file structure via custom Bencode decoder
+            ├── Extract essential dictionary keys (announce, info, piece length)
+            └── Compute 20-byte SHA-1 Info Hash from the raw 'info' block
+└── 2. Peer Discovery Phase
+    └── Build tracker request payload (Info Hash, Peer ID, Port, Stats)
+        └── Announce to Trackers sequentially (HTTP/HTTPS or UDP)
+            └── Receive compact/binary tracker response
+                └── Decode 6-byte network strings into IPv4 addresses and port numbers
+└── 3. Swarm Orchestration Phase (Asyncio Loop)
+    └── Spawn concurrent peer connection workers
+        └── Initialize TCP handshake with available peer addresses
+            ├── Validate 68-byte BitTorrent protocol handshake reply
+            ├── Exchange Bitfield payloads to build global piece-availability map
+            └── Send 'Interested' signal & await peer 'Unchoke' state transition
+└── 4. Pipelined Download Phase
+    └── Target incomplete piece sequence
+        └── Slice target pieces into standard 16 KB blocks
+            ├── Dispatch concurrent 'Request' messages to unchoked peers
+            ├── Monitor timeout thresholds -> Evict stalled/bad peers via Peer Rotation
+            └── Stream raw block chunks from network buffer into active memory
+└── 5. Integrity & Committal Phase
+    └── Aggregate all 16 KB blocks belonging to the target piece
+        └── Run SHA-1 hash function over the assembled byte array
+            ├── Match? Yes ──> Pass to Storage Manager ──> Seek disk offset ──> Commit to disk
+            └── Match? No  ──> Purge corrupted blocks ──> Return piece indices to download queue
+└── [Download Complete]
 
 
 ## ✨ Features
