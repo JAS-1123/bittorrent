@@ -10,18 +10,49 @@ Designed with core systems programming principles in mind, this project demonstr
 
 The client utilizes a hybrid **Proactor Asynchronous I/O pattern** combined with dedicated component isolation to achieve high throughput without risking lock contention or CPU thread thrashing.
 
-cliTorrent/
-├── core/
-│   ├── bencode.py          # Custom Bencode parser (decodes raw torrent files)
-│   ├── torrent.py          # Metadata extractor (calculates info-hashes, parses file layouts)
-│   └── tracker.py          # Tracker client (manages HTTP, HTTPS, and UDP protocol announcements)
-├── network/
-│   ├── connection.py       # Low-level TCP socket manager & handshake handler
-│   ├── protocol.py         # BitTorrent wire protocol implementation (Choke, Unchoke, Interested, Piece)
-│   └── peer_worker.py      # Asyncio worker pool managing concurrent peer download loops
-└── storage/
-    ├── manager.py          # Block assembler & multi-file/single-file disk writer
-    └── verifier.py         # SHA-1 piece validator against torrent file metadata
+# Asynchronous Multi-Threaded C++ BitTorrent Client
+
+A high-performance, production-grade BitTorrent client written from scratch in modern C++ (C++20). This engine leverages a multi-threaded asynchronous architecture to manage dozens of peer connections simultaneously on a lock-free, non-blocking I/O event loop.
+
+---
+
+## 🏗️ System Architecture
+
+```
+        ┌─────────────────────────────────────────────────────────────────┐
+        │                    BitTorrent Architecture                      │
+        └─────────────────────────────────────────────────────────────────┘
+
+                             ┌───────────────────────┐
+                             │     .torrent File     │
+                             └──────────┬────────────┘
+                                        │
+                                        ▼ [Parsed via Bencode]
+                             ┌───────────────────────┐
+                             │   PieceManager State  │
+                             │ (Protected via Mutex) │
+                             └──────────┬────────────┘
+                                        │
+                ┌───────────────────────┼───────────────────────┐
+                │                       │                       │
+                ▼                       ▼                       ▼
+        ┌───────────────┐     ┌───────────────────┐     ┌───────────────┐
+        │Tracker Client │     │Network Thread Pool│     │DiskWriter Loop│
+        │(HTTP/UDP Port)│     │(io_context::run)  │     │(Task Queue)   │
+        └───────────────┘     └─────────┬─────────┘     └───────▲───────┘
+                                        │                       │
+                ┌───────────────────────┴───────────────────────┤
+                ▼                       ▼                       ▼
+        ┌───────────────┐     ┌───────────────────┐     ┌───────────────┐
+        │Peer Connection│     │  Peer Connection  │     │Peer Connection│
+        │   (Strand 1)  │     │    (Strand 2)     │     │   (Strand N)  │
+        └───────┬───────┘     └─────────┬─────────┘     └───────┬───────┘
+                │                       │                       │
+                └───────────────────────┴───────────────────────┘
+                                        │
+                                        ▼ [Verified Piece Blocks]
+                          Pushed to Disk Task Queue
+```
 
 
 
@@ -40,36 +71,68 @@ cliTorrent/
 
 ## 🔄 Core Application Flow
 
-[Start Execution]
-└── 1. Metadata Parsing Phase
-    └── Read local .torrent binary file
-        └── Parse file structure via custom Bencode decoder
-            ├── Extract essential dictionary keys (announce, info, piece length)
-            └── Compute 20-byte SHA-1 Info Hash from the raw 'info' block
-└── 2. Peer Discovery Phase
-    └── Build tracker request payload (Info Hash, Peer ID, Port, Stats)
-        └── Announce to Trackers sequentially (HTTP/HTTPS or UDP)
-            └── Receive compact/binary tracker response
-                └── Decode 6-byte network strings into IPv4 addresses and port numbers
-└── 3. Swarm Orchestration Phase (Asyncio Loop)
-    └── Spawn concurrent peer connection workers
-        └── Initialize TCP handshake with available peer addresses
-            ├── Validate 68-byte BitTorrent protocol handshake reply
-            ├── Exchange Bitfield payloads to build global piece-availability map
-            └── Send 'Interested' signal & await peer 'Unchoke' state transition
-└── 4. Pipelined Download Phase
-    └── Target incomplete piece sequence
-        └── Slice target pieces into standard 16 KB blocks
-            ├── Dispatch concurrent 'Request' messages to unchoked peers
-            ├── Monitor timeout thresholds -> Evict stalled/bad peers via Peer Rotation
-            └── Stream raw block chunks from network buffer into active memory
-└── 5. Integrity & Committal Phase
-    └── Aggregate all 16 KB blocks belonging to the target piece
-        └── Run SHA-1 hash function over the assembled byte array
-            ├── Match? Yes ──> Pass to Storage Manager ──> Seek disk offset ──> Commit to disk
-            └── Match? No  ──> Purge corrupted blocks ──> Return piece indices to download queue
-└── [Download Complete]
+```
+┌─────────────────────────────────────────────────────────────────┐
+        │                     BitTorrent Client Flow                      │
+        └─────────────────────────────────────────────────────────────────┘
 
+                                   ┌──────────────┐
+                                   │  User Input  │
+                                   │(Torrent File)│
+                                   └──────┬───────┘
+                                          │
+                                          ▼
+                             ┌──────────────────────────┐
+                             │ Parse File & Metadata    │
+                             │ (bencode::parser module) │
+                             └────────────┬─────────────┘
+                                          │
+                             ┌────────────┴────────────┐
+                             │                         │
+                             ▼                         ▼
+                   ┌───────────────────┐     ┌───────────────────┐
+                   │Extract File Specs │     │Calculate InfoHash │
+                   │(Size, Pieces, etc)│     │(SHA-1 Crypto Check)│
+                   └─────────┬─────────┘     └───────────────────┘
+                             │
+                             ▼
+                   ┌───────────────────┐
+                   │  Contact Tracker  │
+                   │(tracker_client.cpp)│
+                   │ Get Valid Peer IPs│
+                   └─────────┬─────────┘
+                             │
+                             ▼
+                   ┌───────────────────┐
+                   │Boot Asio Core Pool│
+                   │(io_context multi) │
+                   └─────────┬─────────┘
+                             │
+                             ▼
+                   ┌───────────────────┐
+                   │Establish P2P Conn │
+                   │(Strand Isolation) │
+                   └─────────┬─────────┘
+                             │
+               ┌─────────────┼─────────────┐
+               ▼             ▼             ▼
+         ┌───────────┐ ┌───────────┐ ┌───────────┐
+         │Block Req 1│ │Block Req 2│ │Block Req N│
+         └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
+               │             │             │
+               └────────────┬┴────────────┬┘
+                            ▼             ▼
+                   ┌───────────────────┐
+                   │ Verify Hash & Save│
+                   │ (DiskWriter Loop) │
+                   └─────────┬─────────┘
+                             │
+                             ▼
+                   ┌───────────────────┐
+                   │ Update UI Status  │
+                   │ (Console Metrics) │
+                   └───────────────────┘
+```
 
 ## ✨ Features
 
