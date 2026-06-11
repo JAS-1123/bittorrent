@@ -1,8 +1,6 @@
 # Asynchronous Multi-Threaded C++ BitTorrent Client
 
-A high-performance, production-grade BitTorrent client written from scratch in modern C++ (C++20). This engine leverages a multi-threaded asynchronous architecture to manage dozens of peer connections simultaneously on a lock-free, non-blocking I/O event loop.
-
-Designed with core systems programming principles in mind, this project demonstrates custom binary protocol parsing, thread-safe memory management, network optimization, and decoupled architecture—making it an ideal piece for deep systems engineering technical portfolios.
+A high-performance BitTorrent client written from scratch in modern C++ (C++20). This engine leverages a multi-threaded asynchronous architecture to manage dozens of peer connections simultaneously on a lock-free, non-blocking I/O event loop.
 
 ---
 
@@ -72,7 +70,7 @@ A high-performance, production-grade BitTorrent client written from scratch in m
 ## 🔄 Core Application Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+        ┌─────────────────────────────────────────────────────────────────┐
         │                     BitTorrent Client Flow                      │
         └─────────────────────────────────────────────────────────────────┘
 
