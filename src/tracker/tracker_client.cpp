@@ -6,6 +6,7 @@
 #include <random>
 #include <stdexcept>
 #include <cstring>
+#include <algorithm>
 
 //socket headers
 #include <sys/socket.h>
@@ -68,7 +69,7 @@ namespace bencode {
     }
 
     string TrackerClient::url_encode(const string& raw_bytes){
-        ostringstream escaped; //creates a output stream like cout but in a buffer memory
+        ostringstream escaped; 
         escaped << hex << uppercase;
         
         for(unsigned char c : raw_bytes){
@@ -120,11 +121,11 @@ namespace bencode {
             throw runtime_error("TrackerClient: Connection timeout to: " + host);
         }
         freeaddrinfo(res); 
-
         ostringstream http_packet;
-        http_packet << "GET " << full_request_path << " HTTP/1.1\r\n"
+        http_packet << "GET " << full_request_path << " HTTP/1.0\r\n"
                     << "Host: " << host << "\r\n"
                     << "User-Agent: BitTorrentClient/1.0\r\n"
+                    << "Accept-Encoding: identity\r\n"
                     << "Connection: close\r\n\r\n";
         string request_raw = http_packet.str();
 
@@ -242,4 +243,4 @@ namespace bencode {
 
         return tr;
     }
-}
+} // namespace bencode
