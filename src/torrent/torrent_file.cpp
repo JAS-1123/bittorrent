@@ -117,6 +117,22 @@ static string extract_info_raw(const string& raw){
         TorrentFile tf;
         //move does 0-memory swap type shit
         tf.announce     = move(announce);
+        if (root.count("announce-list")) {
+            List& tiers = get<List>(root.at("announce-list").data);
+            for (auto& tier : tiers) {
+                // each tier is a list of URLs
+                if (!holds_alternative<List>(tier.data)) continue;
+                List& urls = get<List>(tier.data);
+                for (auto& url_val : urls) {
+                    if (!holds_alternative<String>(url_val.data)) continue;
+                    string url = get<String>(url_val.data);
+                    // avoid duplicating the primary announce
+                    if (url != tf.announce)
+                        tf.announce_list.push_back(url);
+                }
+            }
+        }
+
         tf.name         = move(name);
         tf.length       = total_length;
         tf.piece_length = piece_length;

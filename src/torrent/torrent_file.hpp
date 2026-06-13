@@ -26,5 +26,6 @@ namespace bencode {
             return remaining < piece_length ? remaining : piece_length;
         }
         static TorrentFile from_file(const std::string& path);
+        std::vector<std::string> announce_list;
     };
 }

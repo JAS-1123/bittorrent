@@ -1,4 +1,5 @@
 #include "peer_connection.hpp"
+#include "engine/piece_manager.hpp"
 #include "message.hpp" 
 #include <iostream>
 #include <cstring>
@@ -111,8 +112,7 @@ namespace bencode {
         return sock_fd;
     }
 
-    void PeerConnection::handle_message_stream(int sock_fd, const TorrentFile& tf){
-        vector<unsigned char> interested_packet = Message::create_interested();
+void PeerConnection::handle_message_stream(int sock_fd, const TorrentFile& tf, PieceManager& pm) {        vector<unsigned char> interested_packet = Message::create_interested();
         if (send(sock_fd, interested_packet.data(), (int)interested_packet.size(), 0) < 0) {
             cerr << "PeerConnection: Failed to transmit initial Interested packet.\n";
             close(sock_fd);
@@ -214,55 +214,39 @@ namespace bencode {
                     break;
                 }
 
-                case MessageId::PIECE: { 
+                case MessageId::PIECE: {
                     int piece_idx = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
                     int block_off = (payload[4] << 24) | (payload[5] << 16) | (payload[6] << 8) | payload[7];
-                    int data_size = payload_length - 8; 
+                    int data_size = payload_length - 8;
 
-                    if (piece_idx == target_piece_index){
-                        memcpy(piece_buffer.data() + block_off, &payload[8], data_size);
+                    if (piece_idx == target_piece_index) {
+                        cout << " Received block for Piece " << piece_idx
+                            << " offset " << block_off << " (" << data_size << " bytes)\n";
+
+                        bool piece_done = pm.store_block(piece_idx, block_off, &payload[8], data_size);
                         blocks_received++;
 
-                        cout << " Received block " << blocks_received << "/" << total_blocks_in_piece 
-                             << " for Piece " << piece_idx << " (" << data_size << " bytes)\n";
-
-                        if (blocks_received == total_blocks_in_piece) {
-                            cout << "All blocks received. Running SHA-1 Integrity Hash...\n";
-
-                            unsigned char calculated_hash[SHA_DIGEST_LENGTH];
-                            SHA1(piece_buffer.data(), piece_buffer.size(), calculated_hash);
-
-                            const string& expected_hash = tf.pieces[target_piece_index];
-
-                            if (memcmp(calculated_hash, expected_hash.data(), 20) == 0) {
-                                cout << " SHA-1 Verification PASSED for Piece " << target_piece_index << "!\n";
-                            } else {
-                                cerr << "SHA-1 Verification FAILED! Data corruption detected on piece " << target_piece_index << ".\n";
-                            }
-                            peer_bitfield[target_piece_index] = false;
-                            target_piece_index = -1;
-                            blocks_requested = 0;
-                            blocks_received = 0;
+                        if (piece_done) {
+                            peer_bitfield[piece_idx] = false;
+                            target_piece_index    = pm.pick_piece(peer_bitfield);
+                            blocks_requested      = 0;
+                            blocks_received       = 0;
                             total_blocks_in_piece = 0;
 
-                            for (size_t i = 0; i < peer_bitfield.size(); ++i) {
-                                if (peer_bitfield[i]) {
-                                    target_piece_index = static_cast<int>(i);
-                                    cout << "Relocking system trackers onto next piece index [" << target_piece_index << "]\n";
-                                    break;
-                                }
-                            }
-
-                            if (target_piece_index == -1) {
-                                cout << "All available pieces downloaded. Stream complete.\n";
+                            if (pm.all_done()) {
+                                cout << "All pieces downloaded. Stream complete.\n";
                                 close(sock_fd);
                                 return;
                             }
+                            if (target_piece_index == -1) {
+                                cout << "Peer has no more pieces we need right now. Waiting...\n";
+                            } else {
+                                cout << "Relocking onto next piece [" << target_piece_index << "]\n";
+                            }
                         }
                     }
-                    break; 
+                    break;
                 }
-                
                 default:
                     break;
             }
