@@ -23,12 +23,13 @@ public:
 	unsigned int get_piece_length(unsigned int piece);
 	unsigned int get_n_blocks(unsigned int piece);
 	unsigned int get_block_length(unsigned int piece, unsigned int block_index);
+	buffer get_piece_hash(unsigned int piece);
 
 	static const unsigned int BLOCK_SIZE = (1<<14);
 
 private:
 
-	
+	buffer piece_hashes;
 
 	buffer get_bytes(const std::string& filename);
 	buffer get_hash_info(const bencode::item& item);

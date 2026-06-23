@@ -14,7 +14,7 @@
 class speed {
 
 private:
-	std::atomic<unsigned int> bytes, received;
+	std::atomic<long long> bytes, received;
 	std::atomic<bool> finito;
 	std::thread t;
 	
@@ -27,7 +27,7 @@ private:
 	void human_readable(unsigned int b); 
 
 public:
-	speed(): total(0), bytes(0), finito(false), prev(0), mod(0) {}
+	speed(): total(0), bytes(0), received(0), finito(false), prev(0), mod(0) {}
 	void set_total(long long t);
 	void start();
 	void stop();

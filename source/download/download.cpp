@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include "download/farm.h"
 #include <iostream>
+#include <openssl/sha.h>
+#include <string.h>
 
 using namespace std;
 
@@ -60,11 +62,43 @@ void download::add_received(int piece, int block, buffer piece_data) {
 	if(received[piece][block]) return;
 
 	int offset = block * BLOCK_SIZE;
+	
+	if(piece_buffers.count(piece) == 0) {
+		piece_buffers[piece] = buffer(t.get_piece_length(piece));
+	}
+	std::copy(piece_data.begin(), piece_data.end(), piece_buffers[piece].begin() + offset);
+
 	s.add(piece_data.size());
-	w.add(piece_data, piece * t.piece_length + offset);
 
 	received_count++;
 	received[piece][block] = true;
+
+	bool all_blocks_received = true;
+	for (bool b : received[piece]) {
+		if (!b) {
+			all_blocks_received = false;
+			break;
+		}
+	}
+
+	if (all_blocks_received) {
+		unsigned char hash[SHA_DIGEST_LENGTH];
+		SHA1(piece_buffers[piece].data(), piece_buffers[piece].size(), hash);
+
+		buffer expected = t.get_piece_hash(piece);
+		if (memcmp(hash, expected.data(), SHA_DIGEST_LENGTH) == 0) {
+			w.add(piece_buffers[piece], piece * t.piece_length);
+		} else {
+			cout << "Piece " << piece << " failed hash check! Dropping and re-requesting." << endl;
+			received_count -= t.get_n_blocks(piece);
+			for (int i = 0; i < t.get_n_blocks(piece); i++) {
+				received[piece][i] = false;
+				is_in_queue[piece][i] = false;
+				push_job(job(piece, i * BLOCK_SIZE, t.get_block_length(piece, i)));
+			}
+		}
+		piece_buffers.erase(piece);
+	}
 }
 
 bool download::is_done() {

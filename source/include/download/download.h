@@ -4,6 +4,7 @@
 #include <vector>
 #include "tracker/tracker.h"
 #include <queue>
+#include <map>
 #include "download/worker.h"
 
 class download {
@@ -19,6 +20,7 @@ private:
 
 	int received_count;
 	int total_blocks;
+	std::map<int, buffer> piece_buffers;
 
 public:
 	download(const std::vector<peer>& peers, torrent& t);

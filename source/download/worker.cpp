@@ -9,12 +9,16 @@ void writer::start() {
 
 	t = thread([this](){
 
-		while(!finito) {
+		while(true) {
 
 			unique_lock<mutex> lock(mx);
 			cv.wait(lock, [this](){
 				return !q.empty() || finito;
 			});
+
+			if (finito && q.empty()) {
+				break;
+			}
 
 			vector<job> vec;
 

@@ -21,10 +21,10 @@ torrent::torrent(const string& filename) {
 
 	this->piece_length = info.get_int("piece length");
 
-	buffer hashes = info.get_buffer("pieces");
+	this->piece_hashes = info.get_buffer("pieces");
 
 	const int SHA1_SIZE = 20;
-	this->pieces = hashes.size() / SHA1_SIZE;
+	this->pieces = this->piece_hashes.size() / SHA1_SIZE;
 
 	buffer name_bytes = info.get_buffer("name");
 	this->name = string(name_bytes.begin(), name_bytes.end());
@@ -108,4 +108,8 @@ unsigned int torrent::get_block_length(unsigned int piece, unsigned int block_in
 			BLOCK_SIZE;
 }
 
+buffer torrent::get_piece_hash(unsigned int piece) {
+	const int SHA1_SIZE = 20;
+	return buffer(piece_hashes.begin() + piece * SHA1_SIZE, piece_hashes.begin() + piece * SHA1_SIZE + SHA1_SIZE);
+}
 
