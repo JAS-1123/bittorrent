@@ -19,6 +19,7 @@ A highly efficient, lightweight BitTorrent client written from scratch in C++. T
 
 The client separates concerns into distinct modules driven by an event-driven runtime combined with worker pools:
 
+
 ```
                   ┌────────────────────────────────────────┐
                   │          Main Client Thread            │
