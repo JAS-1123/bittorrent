@@ -106,7 +106,7 @@ make
 
 ---
 
-## 🧪 Testing (Arch Linux Environment)
+## 🧪 Testing (Arch Linux Environment (EndeavourOS distro))
 
 To verify the engine works locally, you can test it by downloading a valid single-file torrent (like the Debian netinst ISO) and running the compiled engine against it.
 
