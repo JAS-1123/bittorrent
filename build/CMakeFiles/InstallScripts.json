@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/jas/multithread-bit-torrent/build/cmake_install.cmake",
-		"/home/jas/multithread-bit-torrent/build/source/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

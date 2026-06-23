@@ -1,6 +1,0 @@
-/home/jas/multithread-bit-torrent/build/CMakeFiles/edit_cache.dir
-/home/jas/multithread-bit-torrent/build/CMakeFiles/rebuild_cache.dir
-/home/jas/multithread-bit-torrent/build/source/CMakeFiles/BitTorrent.dir
-/home/jas/multithread-bit-torrent/build/source/CMakeFiles/BitTorrent_lib.dir
-/home/jas/multithread-bit-torrent/build/source/CMakeFiles/edit_cache.dir
-/home/jas/multithread-bit-torrent/build/source/CMakeFiles/rebuild_cache.dir
